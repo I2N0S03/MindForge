@@ -220,7 +220,7 @@ describe('TTSController proofread document sync', () => {
       contents.length = 0;
       contents.push({ doc: liveDoc1, index, overlayer: { add: vi.fn(), remove: vi.fn() } });
     });
-    const controller = new TTSController(null, view, false, undefined, onSectionChange);
+    const controller = new TTSController(null, view, undefined, onSectionChange);
     await controller.init();
     await controller.initViewTTS(1);
     expect(onSectionChange).toHaveBeenCalledWith(1);
