@@ -285,8 +285,6 @@ jobs:
         run: |
           echo "NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}" >> .env.local
           echo "NEXT_PUBLIC_POSTHOG_HOST=${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}" >> .env.local
-          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env.local
           echo "NEXT_PUBLIC_APP_PLATFORM=tauri" >> .env.local
           echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env.local
           echo "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}" >> .env.local
@@ -543,12 +541,3 @@ jobs:
 
           echo "Uploading updated latest.json to GitHub release"
           gh release upload ${{ needs.get-release.outputs.release_tag }} latest.json --clobber
-
-  upload-to-r2:
-    needs: [get-release, build-tauri]
-    permissions:
-      contents: read
-    uses: ./.github/workflows/upload-to-r2.yml
-    with:
-      tag: ${{ needs.get-release.outputs.release_tag }}
-    secrets: inherit
