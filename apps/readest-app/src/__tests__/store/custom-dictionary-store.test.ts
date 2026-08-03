@@ -201,7 +201,6 @@ describe('customDictionaryStore — web search CRUD', () => {
     // Unknown id: silent no-op.
     expect(() => updateDictionary('mdict:nope', { name: 'X' })).not.toThrow();
   });
-
 });
 
 describe('customDictionaryStore — saveCustomDictionaries reference identity (PR 6)', () => {

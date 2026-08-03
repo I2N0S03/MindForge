@@ -146,7 +146,6 @@ describe('isSyncCategoryEnabled', () => {
     expect(isSyncCategoryEnabled('books')).toBe(false);
     expect(isSyncCategoryEnabled('notes')).toBe(false);
   });
-
 });
 
 describe('SYNC_CATEGORIES', () => {

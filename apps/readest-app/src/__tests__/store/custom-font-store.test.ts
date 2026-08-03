@@ -455,5 +455,4 @@ describe('customFontStore', () => {
       expect(savedFonts![0]).not.toHaveProperty('error');
     });
   });
-
 });

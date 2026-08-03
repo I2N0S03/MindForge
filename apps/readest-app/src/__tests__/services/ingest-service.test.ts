@@ -138,10 +138,7 @@ describe('ingestFile', () => {
 
   test('does not mark in-place when no external library folders are configured', async () => {
     const { appService, settings, importBook } = makeDeps();
-    await ingestFile(
-      { file: '/Users/me/Books/sample.epub', books: [] },
-      { appService, settings },
-    );
+    await ingestFile({ file: '/Users/me/Books/sample.epub', books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
@@ -406,10 +403,7 @@ describe('ingestFile', () => {
       externalLibraryFolders: ['/home/me/Library'],
       osPlatform: 'linux',
     });
-    await ingestFile(
-      { file: '/home/me/library/sample.epub', books: [] },
-      { appService, settings },
-    );
+    await ingestFile({ file: '/home/me/library/sample.epub', books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
