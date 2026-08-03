@@ -1,7 +1,7 @@
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
 import type { OPDSCatalog } from '@/types/opds';
-import { downloadFile } from '@/libs/storage';
+import { downloadFile } from '@/utils/fileDownload';
 import { getFileExtFromMimeType } from '@/libs/document';
 import { needsProxy, getProxiedURL, probeAuth, probeFilename } from '@/app/opds/utils/opdsReq';
 import { resolveURL, parseMediaType, getFileExtFromPath } from '@/app/opds/utils/opdsUtils';
@@ -71,7 +71,6 @@ async function downloadAndImport(
   const responseHeaders = await downloadFile({
     appService,
     dst: dstFilePath,
-    cfp: '',
     url: downloadUrl,
     headers,
     singleThreaded: true,

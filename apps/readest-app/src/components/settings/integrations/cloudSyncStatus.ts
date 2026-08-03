@@ -7,20 +7,6 @@ import type { TranslationFunc } from '@/hooks/useTranslation';
  * the call site.
  */
 
-export interface ReadestRowInputs {
-  signedIn: boolean;
-  /** Plan still resolving from the JWT (signed-in only). */
-  planLoading: boolean;
-  /** Readest Cloud syncs the library on this device. */
-  enabled: boolean;
-}
-
-export const getReadestCloudRowStatus = (_: TranslationFunc, s: ReadestRowInputs): string => {
-  if (!s.signedIn) return _('Not signed in');
-  if (s.planLoading) return '…';
-  return s.enabled ? _('Active') : _('Off');
-};
-
 export interface ThirdPartyRowInputs {
   enabled: boolean;
   configured: boolean;
@@ -48,19 +34,17 @@ export interface ThirdPartyRowInputs {
 }
 
 export interface CanToggleCloudProviderInputs {
-  isPremium: boolean;
   isConfigured: boolean;
   isEnabled: boolean;
 }
 
 /**
  * Whether a third-party provider's checkbox can be toggled inline. Turning a
- * provider ON requires premium + configured; turning an already-enabled
- * provider OFF is always allowed, even without premium, so a user whose plan
- * lapses is never trapped with a provider they can't disable.
+ * provider ON requires it to be configured; turning an already-enabled
+ * provider OFF is always allowed.
  */
 export const canToggleCloudProvider = (s: CanToggleCloudProviderInputs): boolean =>
-  (s.isPremium && s.isConfigured) || s.isEnabled;
+  s.isConfigured || s.isEnabled;
 
 export const getThirdPartyRowStatus = (_: TranslationFunc, s: ThirdPartyRowInputs): string => {
   if (!s.enabled) return s.configured ? _('Configured') : _('Not connected');

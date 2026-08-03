@@ -1,5 +1,3 @@
-import { getAccessToken } from './access';
-
 export const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout = 10000) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort('Request timed out'), timeout);
@@ -10,17 +8,15 @@ export const fetchWithTimeout = (url: string, options: RequestInit = {}, timeout
   }).finally(() => clearTimeout(id));
 };
 
+/**
+ * Historically attached a Supabase JWT bearer token; this fork has no
+ * account system, and the API routes this calls (metadata search, Edge
+ * TTS) run unauthenticated, so this is now a plain fetch with error
+ * handling. Kept under its original name to avoid touching every call
+ * site.
+ */
 export const fetchWithAuth = async (url: string, options: RequestInit) => {
-  const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  const headers = {
-    ...options.headers,
-    Authorization: `Bearer ${token}`,
-  };
-
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, options);
 
   if (!response.ok) {
     const errorData = await response.json();

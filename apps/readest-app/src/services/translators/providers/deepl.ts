@@ -1,18 +1,24 @@
 import { getAPIBaseUrl } from '@/services/environment';
 import { stubTranslation as _ } from '@/utils/misc';
 import { ErrorCodes, TranslationProvider } from '../types';
-import { UserPlan } from '@/types/quota';
-import { getSubscriptionPlan, getTranslationQuota } from '@/utils/access';
 import { normalizeToShortLang } from '@/utils/lang';
 import { saveDailyUsage } from '../utils';
 
 const DEEPL_API_ENDPOINT = getAPIBaseUrl() + '/deepl/translate';
 
+/**
+ * Disabled: DeepL translation went through Readest's own backend proxy
+ * (`/api/deepl/translate`), which no longer exists in this fork.
+ * `isTranslatorAvailable` filters this out via `disabled`, so it's never
+ * selectable or fallen back to; the implementation is kept only so a
+ * future backend could re-enable it by flipping the flag.
+ */
 export const deeplProvider: TranslationProvider = {
   name: 'deepl',
   label: _('DeepL'),
   authRequired: true,
   quotaExceeded: false,
+  disabled: true,
   translate: async (
     text: string[],
     sourceLang: string,
@@ -26,9 +32,7 @@ export const deeplProvider: TranslationProvider = {
       'Content-Type': 'application/json',
     };
 
-    let userPlan: UserPlan = 'free';
     if (token) {
-      userPlan = getSubscriptionPlan(token);
       headers['Authorization'] = `Bearer ${token}`;
     }
 
@@ -44,14 +48,12 @@ export const deeplProvider: TranslationProvider = {
       use_cache: useCache,
     });
 
-    const quota = getTranslationQuota(userPlan);
     try {
       const response = await fetch(DEEPL_API_ENDPOINT, { method: 'POST', headers, body });
 
       if (!response.ok) {
         const data = await response.json();
         if (data && data.error && data.error === ErrorCodes.DAILY_QUOTA_EXCEEDED) {
-          saveDailyUsage(quota);
           deeplProvider.quotaExceeded = true;
           throw new Error(ErrorCodes.DAILY_QUOTA_EXCEEDED);
         }
@@ -70,7 +72,6 @@ export const deeplProvider: TranslationProvider = {
         const translation = data.translations?.[i];
         if (translation?.daily_usage) {
           saveDailyUsage(translation.daily_usage);
-          deeplProvider.quotaExceeded = data.daily_usage >= quota;
         }
         return translation?.text || line;
       });
