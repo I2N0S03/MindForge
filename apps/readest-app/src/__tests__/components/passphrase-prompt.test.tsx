@@ -8,7 +8,13 @@ import {
   __resetPassphraseGateForTests,
 } from '@/services/sync/passphraseGate';
 import type { CipherEnvelope } from '@/types/replica';
-import type { ReplicaKeyRow } from '@/libs/replicaSyncClient';
+
+interface ReplicaKeyRow {
+  saltId: string;
+  alg: string;
+  salt: string;
+  createdAt: string;
+}
 
 // Stand-in for a non-English UI: only the retry error has a translation. The
 // gate can only `stubTranslation` that string (it is a non-React module), so

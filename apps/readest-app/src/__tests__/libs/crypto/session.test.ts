@@ -5,7 +5,13 @@ import { derivePbkdf2Key } from '@/libs/crypto/derive';
 import { isSyncError, SyncError } from '@/libs/errors';
 import type { PassphraseStore } from '@/libs/crypto/passphrase';
 import type { CipherEnvelope } from '@/types/replica';
-import type { ReplicaKeyRow } from '@/libs/replicaSyncClient';
+
+interface ReplicaKeyRow {
+  saltId: string;
+  alg: string;
+  salt: string;
+  createdAt: string;
+}
 
 const ITER = 1000;
 const PBKDF2_ALG = 'pbkdf2-600k-sha256';
