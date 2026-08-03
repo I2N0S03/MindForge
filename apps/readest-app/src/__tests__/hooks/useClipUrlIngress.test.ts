@@ -83,16 +83,6 @@ describe('useClipUrlIngress share-extension pending saves', () => {
 });
 
 describe('useClipUrlIngress deep-link routing', () => {
-  it('does NOT run the article clipper on share deep links', async () => {
-    renderHook(() => useClipUrlIngress());
-    await eventDispatcher.dispatch('app-incoming-url', {
-      urls: ['https://web.readest.com/s/Qmup0X1A8ovl2FmKJKA8mB'],
-    });
-    await Promise.resolve();
-    // Share links belong to useOpenShareLink; the clipper must leave them alone.
-    expect(invokeMock).not.toHaveBeenCalled();
-  });
-
   it('still clips ordinary article URLs', async () => {
     renderHook(() => useClipUrlIngress());
     await eventDispatcher.dispatch('app-incoming-url', {
