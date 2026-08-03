@@ -1,6 +1,29 @@
 # WIP handoff — GUI-shell-only extraction
 
-**Branch:** `claude/gui-shell-only` · **PR:** #1 (draft) · **Status: INCOMPLETE, does not typecheck. Do not merge.**
+**Branch:** `claude/gui-shell-only` · **PR:** #1 (draft) · **Status: source tree typechecks/lints clean. Test suite cleanup in progress (background agent a5f0bca137fbdc12f). Do not merge until `pnpm test` is green.**
+
+## Update (this pass)
+
+- Fixed the mid-edit `SettingsMenu.tsx` break: replaced the dead `{user ? ... : <Sign In>}`
+  account block with an always-visible BYO-sync status row.
+- `IntegrationsPanel.tsx`, `cloudSyncStatus.ts`, `utils/access.ts`, `AuthContext.tsx` (kept as a
+  no-op stub — several translator/TTS hooks still destructure it and already treat signed-out as
+  normal), and the four API routes (ai/chat, ai/embed, metadata/search, tts/edge) were already
+  clean from the prior pass.
+- Fixed a real dead-end found in `LibraryEmptyState.tsx`: a "Sign in to sync your library" button
+  unconditionally rendered (since `user` is always null now) and routed to the deleted `/auth`
+  page. Removed.
+- Removed `navigateToLogin`/`navigateToProfile`/`navigateToResetPassword`/`navigateToUpdatePassword`
+  from `utils/nav.ts` — no longer called anywhere.
+- `.env`: removed the `NEXT_PUBLIC_DEFAULT_SUPABASE_*`/`STRIPE_*` base64 fallback keys.
+- `pnpm lint` on source (non-test) files is clean except the pre-existing, unrelated
+  `simplecc` submodule issue (see bottom of this doc).
+- Test suite cleanup delegated to a background agent with a full file-by-file categorization
+  (delete vs fix) — see prompt history. If it hasn't reported back, check `git status`/`git log`
+  for what landed, then run `pnpm --filter @readest/readest-app lint` and `pnpm --filter
+  @readest/readest-app test` to see what's left.
+
+## Original resume point (superseded, kept for context)
 
 ## Goal
 

@@ -1,13 +1,6 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
-
-// transferManager is a singleton with heavy dependencies; mock it so the test
-// only observes whether ingestFile decided to queue an upload.
-vi.mock('@/services/transferManager', () => ({
-  transferManager: { queueUpload: vi.fn() },
-}));
+import { describe, test, expect, vi } from 'vitest';
 
 import { ingestFile } from '@/services/ingestService';
-import { transferManager } from '@/services/transferManager';
 import type { Book } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
@@ -27,8 +20,6 @@ function makeBook(overrides: Partial<Book> = {}): Book {
 function makeDeps(
   over: {
     importResult?: Book | null;
-    bookSyncEnabled?: boolean;
-    isLoggedIn?: boolean;
     externalLibraryFolders?: string[];
     osPlatform?: OsPlatform;
   } = {},
@@ -42,45 +33,29 @@ function makeDeps(
     importBook,
     osPlatform: over.osPlatform ?? ('linux' as OsPlatform),
   } as unknown as AppService;
-  // The Manage Sync "book" category defaults on; only an explicit `false`
-  // opts out of auto-upload. Leaving syncCategories unset mirrors that default.
   const settings = {
     externalLibraryFolders: over.externalLibraryFolders,
-    syncCategories: over.bookSyncEnabled === false ? { book: false } : undefined,
   } as SystemSettings;
-  return { appService, settings, isLoggedIn: over.isLoggedIn ?? false, importBook };
+  return { appService, settings, importBook };
 }
 
 describe('ingestFile', () => {
-  beforeEach(() => {
-    vi.mocked(transferManager.queueUpload).mockClear();
-  });
-
   test('returns the imported book', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings } = makeDeps();
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book?.hash).toBe('hash1');
   });
 
   test('returns null when importBook returns null', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({ importResult: null });
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings } = makeDeps({ importResult: null });
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book).toBeNull();
   });
 
   test('passes the lookup index through to importBook', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
+    const { appService, settings, importBook } = makeDeps();
     const lookupIndex = { byHash: new Map(), byMetaHash: new Map() } as never;
-    await ingestFile(
-      { file: 'book.epub', books: [], lookupIndex },
-      { appService, settings, isLoggedIn },
-    );
+    await ingestFile({ file: 'book.epub', books: [], lookupIndex }, { appService, settings });
     expect(importBook).toHaveBeenCalledWith('book.epub', [], {
       lookupIndex,
       transient: undefined,
@@ -89,10 +64,10 @@ describe('ingestFile', () => {
   });
 
   test('applies groupId and groupName', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
+    const { appService, settings } = makeDeps();
     const book = await ingestFile(
       { file: 'book.epub', books: [], groupId: 'g1', groupName: 'Sci-Fi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.groupId).toBe('g1');
     expect(book?.groupName).toBe('Sci-Fi');
@@ -104,12 +79,12 @@ describe('ingestFile', () => {
     // should demote it back to the library root rather than silently
     // keeping the stale group — that behaviour matters for the
     // Import-from-Folder dialog's "flatten" mode.
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ groupId: 'old', groupName: 'Old/Folder' }),
     });
     const book = await ingestFile(
       { file: 'book.epub', books: [], groupId: '', groupName: undefined },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.groupId).toBe('');
     expect(book?.groupName).toBeUndefined();
@@ -119,113 +94,44 @@ describe('ingestFile', () => {
     // Sanity check for the tri-state contract: undefined groupId means
     // "don't touch the existing group" (used by the inbox drainer and
     // /send page where the user hasn't picked a destination).
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ groupId: 'keep', groupName: 'Keep/Me' }),
     });
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book?.groupId).toBe('keep');
     expect(book?.groupName).toBe('Keep/Me');
   });
 
   test('applies a subject tag and bumps updatedAt', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
+    const { appService, settings } = makeDeps();
     const book = await ingestFile(
       { file: 'book.epub', books: [], subjectTag: 'scifi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.tags).toContain('scifi');
     expect(book?.updatedAt).toBeGreaterThan(2000);
   });
 
   test('does not duplicate an existing tag or bump updatedAt', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ tags: ['scifi'], updatedAt: 2000 }),
     });
     const book = await ingestFile(
       { file: 'book.epub', books: [], subjectTag: 'scifi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.tags).toEqual(['scifi']);
     expect(book?.updatedAt).toBe(2000);
   });
 
-  test('forceUpload queues an upload even when book sync is turned off', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      bookSyncEnabled: false,
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('queues an upload by default without forceUpload', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-    });
-    await ingestFile({ file: 'book.epub', books: [] }, { appService, settings, isLoggedIn });
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('does not queue an upload when book sync is turned off in manage sync', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      bookSyncEnabled: false,
-      isLoggedIn: true,
-    });
-    await ingestFile({ file: 'book.epub', books: [] }, { appService, settings, isLoggedIn });
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
-  test('does not queue an upload when the user is not logged in', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: false,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
-  test('never queues an upload for a transient import', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], transient: true, forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
   test('passes the transient flag through to importBook', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
-    await ingestFile(
-      { file: 'book.epub', books: [], transient: true },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings, importBook } = makeDeps();
+    await ingestFile({ file: 'book.epub', books: [], transient: true }, { appService, settings });
     expect(importBook).toHaveBeenCalledWith('book.epub', [], {
       lookupIndex: undefined,
       transient: true,
       inPlace: false,
     });
-  });
-
-  test('does not queue an upload when the book is already uploaded', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      importResult: makeBook({ uploadedAt: 5000 }),
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
   });
 
   // ------ in-place auto-detection ------
