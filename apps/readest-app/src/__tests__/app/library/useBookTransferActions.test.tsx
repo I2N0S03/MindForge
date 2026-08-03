@@ -18,8 +18,8 @@ const backends = vi.hoisted(() => ({
   active: [] as ('webdav' | 'gdrive' | 's3' | 'onedrive')[],
 }));
 
-const runFileBookUpload = vi.hoisted(() => vi.fn(async () => true));
-const runFileBookDownload = vi.hoisted(() => vi.fn(async () => true));
+const runFileBookUpload = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
+const runFileBookDownload = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation:

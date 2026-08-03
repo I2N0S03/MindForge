@@ -1,80 +1,47 @@
-# WIP handoff — GUI-shell-only extraction
+# GUI-shell-only extraction — COMPLETE
 
-**Branch:** `claude/gui-shell-only` · **PR:** #1 (draft) · **Status: source tree typechecks/lints clean. Test suite cleanup in progress (background agent a5f0bca137fbdc12f). Do not merge until `pnpm test` is green.**
+**Branch:** `claude/gui-shell-only` · **PR:** #1 (draft)
 
-## Update (this pass)
+**Status: `pnpm lint` (tsgo + biome) and `pnpm test` are both clean, modulo one
+pre-existing, unrelated environment issue described below.** Ready for review;
+the draft label can come off once someone's eyeballed the diff.
 
-- Fixed the mid-edit `SettingsMenu.tsx` break: replaced the dead `{user ? ... : <Sign In>}`
-  account block with an always-visible BYO-sync status row.
-- `IntegrationsPanel.tsx`, `cloudSyncStatus.ts`, `utils/access.ts`, `AuthContext.tsx` (kept as a
-  no-op stub — several translator/TTS hooks still destructure it and already treat signed-out as
-  normal), and the four API routes (ai/chat, ai/embed, metadata/search, tts/edge) were already
-  clean from the prior pass.
-- Fixed a real dead-end found in `LibraryEmptyState.tsx`: a "Sign in to sync your library" button
-  unconditionally rendered (since `user` is always null now) and routed to the deleted `/auth`
-  page. Removed.
-- Removed `navigateToLogin`/`navigateToProfile`/`navigateToResetPassword`/`navigateToUpdatePassword`
-  from `utils/nav.ts` — no longer called anywhere.
-- `.env`: removed the `NEXT_PUBLIC_DEFAULT_SUPABASE_*`/`STRIPE_*` base64 fallback keys.
-- `pnpm lint` on source (non-test) files is clean except the pre-existing, unrelated
-  `simplecc` submodule issue (see bottom of this doc).
-- Test suite cleanup delegated to a background agent with a full file-by-file categorization
-  (delete vs fix) — see prompt history. If it hasn't reported back, check `git status`/`git log`
-  for what landed, then run `pnpm --filter @readest/readest-app lint` and `pnpm --filter
-  @readest/readest-app test` to see what's left.
+## What changed
 
-## Original resume point (superseded, kept for context)
+Removed all backend/cloud code from this Readest fork — Supabase auth, Stripe/Apple/Google IAP,
+Readest Cloud (R2) storage+sync, DeepL/Yandex translation proxies, and their CI/hosting
+infrastructure (docker/, vercel-merge/docker-image/upload-to-r2 workflows) — while keeping the
+entire GUI, Tauri shell, and reader engine working with no dead-end clicks. Kept fully working:
+BYO cloud sync (WebDAV/Google Drive/OneDrive/S3, now paywall-free since there's no payment system
+to gate on), KOReader sync, Readwise, Hardcover, OPDS catalogs, reader/annotation/TTS/themes, the
+four API routes that were incidentally auth-gated but aren't backend features (AI assistant,
+metadata search, Edge TTS — now run unauthenticated).
 
-## Goal
+Guiding rule throughout: `useAuth()`'s `user`/`token` are permanently null (no login exists
+anymore, kept as a no-op `AuthContext` stub since some translator/TTS hooks still destructure it
+and already treat signed-out as normal). Every UI branch on user/token/premium either had its gate
+removed (if it guarded a kept feature) or its entry point deleted (if it guarded a removed
+feature) — never left as a dead button routing to a page that no longer exists.
 
-Strip all backend/cloud code from this Readest fork, keep the entire GUI, Tauri shell, and reader engine
-working with no dead-end clicks. Removing: Supabase auth, Stripe/Apple/Google IAP, Readest Cloud
-(R2) storage+sync, DeepL/Yandex translation proxies. Keeping fully working: BYO sync
-(WebDAV/GDrive/OneDrive/S3), KOReader sync, Readwise, Hardcover, OPDS, reader/annotation/TTS/themes.
+## The one remaining failure (not caused by this work)
 
-Guiding rule: `useAuth()` user/token is permanently null (no login exists anymore). Every UI branch on
-user/token/premium either (a) gets the gate removed if it guards a kept feature, or (b) has its entry
-point deleted if it guards a removed feature. Never leave a button that routes nowhere.
+`src/utils/simplecc.ts` imports `@simplecc/simplecc_wasm`, which resolves to
+`packages/simplecc-wasm/` — a git submodule that IS checked out on disk here,
+but is a Rust→WASM crate (`Cargo.toml` + `Makefile`) that needs an actual
+build step (`pnpm setup-simplecc` builds and copies `dist/web/*`) beyond a
+plain `pnpm install`, and this sandbox has no Rust/wasm-pack toolchain to run
+it. Per this repo's own `CLAUDE.md`, `pnpm worktree:new` is what normally
+handles this kind of submodule/vendor setup for a fresh checkout — it wasn't
+run here. This blocks: `src/__tests__/utils/simplecc.test.ts`, and cascades
+into every module that imports `services/nav/index.ts` (which imports
+simplecc) — that's the whole `document/*`, `libs/document.test.ts`,
+`novel-import.test.ts`, `jieba.test.ts`, and several reader-hook test files.
+Confirmed by direct error message: `Cannot find package '@simplecc/simplecc_wasm'`.
+Verify on a real dev machine (`pnpm worktree:new` or equivalent) rather than
+in this sandbox.
 
-## Done and pushed (commit 1, CI green expected)
+## Not done (out of scope so far)
 
-- Deleted `.github/workflows/{vercel-merge,docker-image,upload-to-r2}.yml` and `docker/`.
-- `release.yml`/`nightly.yml`: kept Tauri build/sign matrix, dropped Supabase secret injection.
-
-## Done but UNCOMMITTED/UNVERIFIED (~204 files in working tree)
-
-Largely complete deletions: `app/api/{stripe,apple,google,share,yandex-translate}/`, `app/auth/`,
-`app/user/`, `app/s/`, `libs/payment/`, share dialogs, `TransferQueuePanel`, `useNotesSync`,
-`useProgressSync`, replica sync files, storage/R2 utils.
-Edited: auth-gate removed from `api/{ai/chat,ai/embed,metadata/search,tts/edge}/route.ts` (these are GUI
-features, not accounts — they now run unauthenticated, which is intended for a fork with no login).
-
-## Exact resume point
-
-The agent was killed **mid-edit in `apps/readest-app/src/app/library/components/SettingsMenu.tsx`** —
-imports and handlers were deleted but the JSX still references them. This is the top error source.
-
-Needed there: drop the `{user ? ... : <Sign In>}` block entirely (avatar / "Logged in as" / Quota /
-Account / Cloud File Transfers / Data Sync / Upgrade rows), and keep the sync-status MenuItem always
-visible, ungated — `Icon={backends.length > 0 && !providerLastError ? MdSync : MdSyncProblem}`, spin on
-`providerSyncing` only. Then drop now-unused imports (`useAuth`, `useQuotaStats`, `UserAvatar`, `Quota`,
-`navigateToLogin`, `navigateToProfile`, `PiUserCircle*`, `MdCloudSync`, `useTransferQueue`) and the
-`readestEnabled`/`providers`/`nativeLastSyncedAt` computation (Readest Cloud is gone; providers =
-third-party backends only).
-
-## Remaining after that
-
-1. `pnpm --filter @readest/readest-app lint` and fix dangling imports until green.
-2. Delete test files covering deleted features (payment, auth, R2/storage/object, share, replica sync,
-   transferStore, DeepL/Yandex). Update — don't weaken — tests for kept features
-   (e.g. `cloudSync.test.ts` asserting `CLOUD_SYNC_REQUIRES_PREMIUM === true`, now false).
-3. Not yet started: `IntegrationsPanel.tsx` premium-paywall removal (badges, `isPremium` in
-   `canToggleCloudProvider`, Readest Cloud row + `readest-cloud` subpage, Discord login prompt);
-   `utils/access.ts` cleanup; `utils/nav.ts` drop `navigateToLogin`/`navigateToProfile`;
-   `.env` fallback keys (`NEXT_PUBLIC_DEFAULT_SUPABASE_*`, `..._STRIPE_*` — keep PostHog).
-4. Out of scope so far: `src-tauri/` Rust (optional macOS Apple/Safari auth command removal).
-
-## Known pre-existing failure (not ours)
-
-`src/utils/simplecc.ts` → `Cannot find module '@simplecc/simplecc_wasm'` — uninitialized git submodule
-in this environment, unrelated to this change.
+`src-tauri/` Rust: optionally could strip the macOS `apple_auth`/`safari_auth` native
+Sign-in-with-Apple command registrations from `lib.rs` — low priority, they're isolated,
+self-contained files that don't break anything left as unused dead code.

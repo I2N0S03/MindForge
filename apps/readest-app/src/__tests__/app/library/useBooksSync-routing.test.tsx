@@ -12,7 +12,13 @@ const backends = vi.hoisted(() => ({
   active: [] as ('webdav' | 'gdrive' | 's3' | 'onedrive')[],
 }));
 
-const runFileLibrarySyncPass = vi.hoisted(() => vi.fn(async () => ({ booksSynced: 3 })));
+const runFileLibrarySyncPass = vi.hoisted(() =>
+  vi.fn(
+    async (..._args: unknown[]): Promise<{ booksSynced: number } | null> => ({
+      booksSynced: 3,
+    }),
+  ),
+);
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation:
