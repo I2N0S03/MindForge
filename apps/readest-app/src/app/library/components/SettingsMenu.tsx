@@ -20,7 +20,6 @@ import { getReadyFileSyncBackends } from '@/services/sync/file/runLibrarySync';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { tauriHandleSetAlwaysOnTop, tauriHandleToggleFullScreen } from '@/utils/window';
 import { setAboutDialogVisible } from '@/components/AboutWindow';
 import { setMigrateDataDirDialogVisible } from '@/app/library/components/MigrateDataWindow';
@@ -57,7 +56,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
   const [savedBookCoverForLockScreen, setSavedBookCoverForLockScreen] = useState(
     settings.savedBookCoverForLockScreen || '',
   );
-  const iconSize = useResponsiveSize(16);
 
   const [isRefreshingMetadata, setIsRefreshingMetadata] = useState(false);
   const [refreshMetadataProgress, setRefreshMetadataProgress] = useState('');
@@ -258,74 +256,24 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
       )}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      {user ? (
-        <MenuItem
-          label={
-            userDisplayName
-              ? _('Logged in as {{userDisplayName}}', { userDisplayName })
-              : _('Logged in')
-          }
-          labelClass='!max-w-40'
-          aria-label={_('View account details and quota')}
-          Icon={
-            avatarUrl ? (
-              <UserAvatar url={avatarUrl} size={iconSize} DefaultIcon={PiUserCircleCheck} />
-            ) : (
-              PiUserCircleCheck
-            )
-          }
-        >
-          <ul className='ms-0 flex flex-col ps-0 before:hidden'>
-            <MenuItem
-              label={_('Cloud File Transfers')}
-              Icon={MdCloudSync}
-              description={
-                hasActiveTransfers
-                  ? _('{{activeCount}} active, {{pendingCount}} pending', {
-                      activeCount: stats.active,
-                      pendingCount: stats.pending,
-                    })
-                  : stats.failed > 0
-                    ? _('{{failedCount}} failed', { failedCount: stats.failed })
-                    : ''
-              }
-              onClick={openTransferQueue}
-            />
-            <MenuItem
-              label={syncRowLabel}
-              Icon={user ? MdSync : MdSyncProblem}
-              labelClass='ps-2 pe-1 !mx-0'
-              iconClassName={(user && isSyncing) || providerSyncing ? 'animate-reverse-spin' : ''}
-              onClick={handleSyncLibrary}
-              description={
-                backends.length === 0
-                  ? undefined
-                  : providers.length > 1
-                    ? // Several providers named in full would overrun the row; show a
-                      // count. `count` (not a plain var) so i18next applies each
-                      // locale's plural rule — the common case is exactly 2, where
-                      // Slavic/Arabic paucal forms differ from the generic plural.
-                      _('Library sync via {{count}} providers', { count: providers.length })
-                    : _('Library sync via {{provider}}', { provider: providerNames })
-              }
-            />
-            {readestEnabled ? (
-              <button
-                onClick={handleUserProfile}
-                className='hover:bg-base-300 w-full rounded-md'
-                style={{
-                  paddingInlineStart: `${iconSize}px`,
-                }}
-              >
-                <Quota quotas={quotas} labelClassName='h-10 pl-3 pr-2' />
-              </button>
-            ) : null}
-            <MenuItem label={_('Account')} onClick={handleUserProfile} />
-          </ul>
-        </MenuItem>
-      ) : (
-        <MenuItem label={_('Sign In')} Icon={PiUserCircle} onClick={handleUserLogin}></MenuItem>
-      )}
+      <MenuItem
+        label={syncRowLabel}
+        Icon={backends.length > 0 && !providerLastError ? MdSync : MdSyncProblem}
+        labelClass='ps-2 pe-1 !mx-0'
+        iconClassName={providerSyncing ? 'animate-reverse-spin' : ''}
+        onClick={handleSyncLibrary}
+        description={
+          backends.length === 0
+            ? undefined
+            : backends.length > 1
+              ? // Several providers named in full would overrun the row; show a
+                // count. `count` (not a plain var) so i18next applies each
+                // locale's plural rule — the common case is exactly 2, where
+                // Slavic/Arabic paucal forms differ from the generic plural.
+                _('Library sync via {{count}} providers', { count: backends.length })
+              : _('Library sync via {{provider}}', { provider: providerNames })
+        }
+      />
 
       {isTauriAppPlatform() && (
         <MenuItem
@@ -381,7 +329,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
           {appService?.canCustomizeRootDir && (
             <MenuItem label={_('Change Data Location')} onClick={handleSetRootDir} />
           )}
-          {user && <MenuItem label={_('Data Sync')} onClick={handleManageSync} />}
           <MenuItem
             label={_('Refresh Metadata')}
             description={refreshMetadataProgress}
@@ -427,9 +374,6 @@ const SettingsMenu: React.FC<SettingsMenuProps> = ({ onPullLibrary, setIsDropdow
         </ul>
       </MenuItem>
       <hr aria-hidden='true' className='border-base-200 my-1' />
-      {user && userProfilePlan === 'free' && (
-        <MenuItem label={_('Upgrade to Readest Premium')} onClick={handleUpgrade} />
-      )}
       {isWebAppPlatform() && <MenuItem label={_('Download Readest')} onClick={downloadReadest} />}
       <MenuItem label={_('About Readest')} onClick={showAboutReadest} />
     </Menu>
