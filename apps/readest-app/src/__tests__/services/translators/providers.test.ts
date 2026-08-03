@@ -659,7 +659,7 @@ describe('provider registry availability handling', () => {
     expect(names).toContain('yandex');
   });
 
-  it('requires authentication for yandex only in web builds', async () => {
+  it('yandex is always unavailable now that it is disabled', async () => {
     const { getTranslator, isTranslatorAvailable } = await import(
       '@/services/translators/providers'
     );
@@ -667,10 +667,11 @@ describe('provider registry availability handling', () => {
 
     vi.mocked(isTauriAppPlatform).mockReturnValue(false);
     expect(isTranslatorAvailable(yandex, false)).toBe(false);
-    expect(isTranslatorAvailable(yandex, true)).toBe(true);
+    expect(isTranslatorAvailable(yandex, true)).toBe(false);
 
     vi.mocked(isTauriAppPlatform).mockReturnValue(true);
-    expect(isTranslatorAvailable(yandex, false)).toBe(true);
+    expect(isTranslatorAvailable(yandex, false)).toBe(false);
+    expect(isTranslatorAvailable(yandex, true)).toBe(false);
   });
 
   it('isTranslatorAvailable returns false for disabled providers', async () => {
