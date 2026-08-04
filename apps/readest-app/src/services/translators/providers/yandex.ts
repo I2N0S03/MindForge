@@ -289,9 +289,19 @@ async function translateChunk(
   return data.text.join('');
 }
 
+/**
+ * Disabled: the web build's session/translate requests proxy through
+ * `/api/yandex-translate` (to attach a same-origin Referer), which no
+ * longer exists in this fork. `isTranslatorAvailable` filters this out
+ * via `disabled`, so it's never selectable or fallen back to on any
+ * platform — including Tauri, where the direct client would otherwise
+ * still work without a backend — keeping the availability story
+ * uniform across builds.
+ */
 export const yandexProvider: TranslationProvider = {
   name: 'yandex',
   label: _('Yandex Translate'),
+  disabled: true,
   get authRequired() {
     return !isTauriAppPlatform();
   },

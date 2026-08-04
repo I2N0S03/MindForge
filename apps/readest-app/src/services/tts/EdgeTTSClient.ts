@@ -11,8 +11,7 @@ import { TTSController } from './TTSController';
 // Everything engine-independent (scheduler, playout, word tracking, preload)
 // lives in BufferedTTSClient; the Edge specifics live in EdgeSpeechProvider.
 // This subclass keeps the persisted 'edge-tts' client name and owns the one
-// policy that needs app context: the wss -> https transport fallback, which
-// depends on the user's auth state.
+// policy that needs app context: the wss -> https transport fallback.
 export { DEFAULT_SENTENCE_GAP_SEC } from './BufferedTTSClient';
 
 export class EdgeTTSClient extends BufferedTTSClient {
@@ -42,34 +41,27 @@ export class EdgeTTSClient extends BufferedTTSClient {
 
   override async init(_protocol: EDGE_TTS_PROTOCOL = 'wss'): Promise<boolean> {
     this.voices = await this.#edgeProvider.getAllVoices();
-    // The free wss transport is intermittently blocked in browsers;
-    // authenticated users fall back to the https proxy route. On Tauri the
-    // native WebSocket (with full headers) is the only Edge transport — a
-    // failure there means offline or Edge itself is down, so never fall back
-    // to the proxy, which would fire cross-origin /api/tts/edge requests.
+    // The free wss transport is intermittently blocked in browsers, so fall
+    // back to the https proxy route. On Tauri the native WebSocket (with full
+    // headers) is the only Edge transport — a failure there means offline or
+    // Edge itself is down, so never fall back to the proxy, which would fire
+    // cross-origin /api/tts/edge requests.
     if (await this.#edgeProvider.init('wss')) {
       this.initialized = true;
       return true;
     }
-    if (
-      !isTauriAppPlatform() &&
-      this.controller?.isAuthenticated &&
-      (await this.#edgeProvider.init('https'))
-    ) {
+    if (!isTauriAppPlatform() && (await this.#edgeProvider.init('https'))) {
       this.initialized = true;
       return true;
     }
     // Every probe failed: blocked, or offline. With a persistent cache a
     // pre-downloaded book still plays (hits play, misses skip via the
-    // provider's permanent error), so init as cache-only rather than fail —
-    // and do NOT nag a signed-out user with a warm cache to sign in.
+    // provider's permanent error), so init as cache-only rather than fail.
     if (this.provider instanceof CachingProvider) {
       this.initialized = true;
       return true;
     }
-    if (!this.controller?.isAuthenticated) {
-      this.controller?.dispatchEvent(new CustomEvent('tts-need-auth'));
-    }
+    this.controller?.dispatchEvent(new CustomEvent('tts-unavailable'));
     this.initialized = false;
     return false;
   }

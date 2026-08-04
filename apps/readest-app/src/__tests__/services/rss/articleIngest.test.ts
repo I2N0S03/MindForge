@@ -93,7 +93,6 @@ describe('openFeedArticle grouping', () => {
       books: [],
       appService: {} as never,
       settings: {} as never,
-      isLoggedIn: false,
       translate: (k: string) => k,
       convert: async () => ({ file: new File(['x'], 'a.epub'), title: 'T', author: '' }),
       ingest: (async (opts: { groupId?: string; groupName?: string }) => {

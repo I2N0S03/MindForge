@@ -19,6 +19,10 @@ vi.mock('@/utils/misc', async (importOriginal) => {
 
 vi.mock('@/services/environment', () => ({
   isPWA: vi.fn().mockReturnValue(false),
+  isTauriAppPlatform: vi.fn().mockReturnValue(false),
+  isWebAppPlatform: vi.fn().mockReturnValue(true),
+  getAPIBaseUrl: vi.fn().mockReturnValue('/api'),
+  getNodeAPIBaseUrl: vi.fn().mockReturnValue('/api'),
 }));
 
 // Mock settingsService, bookService, etc. to avoid deep deps

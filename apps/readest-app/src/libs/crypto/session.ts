@@ -1,13 +1,44 @@
 import { isWrongPassphraseError, SyncError } from '@/libs/errors';
 import type { CipherEnvelope } from '@/types/replica';
-import { replicaSyncClient } from '@/libs/replicaSyncClient';
-import type { ReplicaKeyRow, ReplicaSyncClient } from '@/libs/replicaSyncClient';
 import { derivePbkdf2Key } from './derive';
 import { CURRENT_ALG, decryptFromEnvelope, encryptToEnvelope } from './envelope';
 import { createPassphraseStore } from './passphrase';
 import type { PassphraseStore } from './passphrase';
 
 const PBKDF2_ALG = 'pbkdf2-600k-sha256';
+
+export interface ReplicaKeyRow {
+  saltId: string;
+  alg: string;
+  salt: string;
+  createdAt: string;
+}
+
+/**
+ * The server-backed key store CryptoSession needs to agree on a salt across
+ * devices. There is no such server in this fork (the passphrase feature
+ * existed to protect fields replicated through Readest Cloud), so the only
+ * implementation ever wired up is {@link unavailableReplicaKeyClient} below —
+ * every credentials-sync call site is gated on a setting nothing can enable
+ * anymore, so these methods are unreachable in practice.
+ */
+export interface ReplicaKeyClient {
+  listReplicaKeys(): Promise<ReplicaKeyRow[]>;
+  createReplicaKey(alg: string): Promise<ReplicaKeyRow>;
+  forgetReplicaKeys(): Promise<void>;
+}
+
+export const unavailableReplicaKeyClient: ReplicaKeyClient = {
+  async listReplicaKeys() {
+    throw new SyncError('SERVER', 'Cross-device sync passphrase is unavailable in this build');
+  },
+  async createReplicaKey() {
+    throw new SyncError('SERVER', 'Cross-device sync passphrase is unavailable in this build');
+  },
+  async forgetReplicaKeys() {
+    throw new SyncError('SERVER', 'Cross-device sync passphrase is unavailable in this build');
+  },
+};
 
 const base64ToBytes = (b64: string): Uint8Array => {
   const s = atob(b64);
@@ -23,7 +54,7 @@ interface KnownSalt {
 }
 
 export interface CryptoSessionDeps {
-  client?: Pick<ReplicaSyncClient, 'listReplicaKeys' | 'createReplicaKey' | 'forgetReplicaKeys'>;
+  client?: ReplicaKeyClient;
   /** Override PBKDF2 iterations. Tests pass a low value; production omits. */
   iterations?: number;
   /**
@@ -49,10 +80,7 @@ export class CryptoSession {
   private salts = new Map<string, KnownSalt>();
   private keys = new Map<string, CryptoKey>();
   private activeSaltId: string | null = null;
-  private readonly client: Pick<
-    ReplicaSyncClient,
-    'listReplicaKeys' | 'createReplicaKey' | 'forgetReplicaKeys'
-  >;
+  private readonly client: ReplicaKeyClient;
   private readonly iterations: number | undefined;
   /**
    * Optional store override, only set when a test passes a mock.
@@ -63,7 +91,7 @@ export class CryptoSession {
   private readonly storeOverride: PassphraseStore | undefined;
 
   constructor(deps: CryptoSessionDeps = {}) {
-    this.client = deps.client ?? replicaSyncClient;
+    this.client = deps.client ?? unavailableReplicaKeyClient;
     this.iterations = deps.iterations;
     this.storeOverride = deps.store;
   }

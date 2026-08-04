@@ -17,7 +17,13 @@ import { DatabaseOpts, DatabaseService } from '@/types/database';
 import { SchemaType } from '@/services/database/migrate';
 import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from '@/types/book';
 import type { BookNav } from '@/services/nav';
-import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
+import {
+  getLibraryFilename,
+  getLibraryBackupFilename,
+  getCoverFilename,
+  getDir,
+} from '@/utils/book';
+import { resolveBookContentSource } from './bookContent';
 
 import { getOSPlatform } from '@/utils/misc';
 import { isStoragePermissionError, requestStoragePermission } from '@/utils/permission';
@@ -28,7 +34,6 @@ import type { ImportedDictionary } from './dictionaries/types';
 import type { SelectedFile } from '@/hooks/useFileSelector';
 
 import * as BookSvc from './bookService';
-import * as CloudSvc from './cloudService';
 import * as DictSvc from './dictionaries/dictionaryService';
 import * as FontSvc from './fontService';
 import * as ImageSvc from './imageService';
@@ -332,108 +337,76 @@ export abstract class BaseAppService implements AppService {
     });
   }
 
+  /**
+   * Removes the book's local (and, for 'purge', on-disk sidecar) data.
+   * There is no cloud storage backend in this build, so 'cloud' is a
+   * no-op and 'both' behaves like 'local' plus removing the cover.
+   */
   async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {
-    return CloudSvc.deleteBook(this.fs, book, deleteAction);
+    if (deleteAction === 'local' || deleteAction === 'both' || deleteAction === 'purge') {
+      const source = await resolveBookContentSource(this.fs, book);
+      // Only remove files Readest itself created. A 'managed' source lives under
+      // our Books/<hash>/ dir (a copy we made on import), so it is ours to delete.
+      // An 'external' source is the user's own file at a user-controlled location
+      // (book.filePath, base 'None') — e.g. a "Read books in place" import or a
+      // transiently-opened file. Deleting a book from Readest must NEVER remove
+      // that source file; doing so silently destroyed users' originals.
+      if (source.kind === 'managed' && deleteAction !== 'purge') {
+        // Purge wipes the whole directory below, so skip the per-file removal.
+        if (await this.fs.exists(source.path, source.base)) {
+          await this.fs.removeFile(source.path, source.base);
+        }
+      }
+
+      // Purge erases the entire app-generated Books/<hash>/ directory — the
+      // managed book file, cover.png, and (the reason for issue #4615)
+      // config.json (reading progress, notes, bookmarks) + nav.json that the
+      // other delete actions leave behind. In-place books keep their external
+      // source file untouched; this only clears Readest's own sidecar dir.
+      if (deleteAction === 'purge') {
+        const dir = getDir(book);
+        if (await this.fs.exists(dir, 'Books')) {
+          await this.fs.removeDir(dir, 'Books', true);
+        }
+        // The per-book TTS audio cache lives under Cache (kept out of Books/
+        // so backups never pick it up); purge erases every trace of the
+        // book, so drop it too. Non-purge deletes leave it: like
+        // config.json, a re-downloaded book resumes with a warm audio cache.
+        const ttsCacheDir = `tts-cache/${book.hash}`;
+        if (await this.fs.exists(ttsCacheDir, 'Cache')) {
+          await this.fs.removeDir(ttsCacheDir, 'Cache', true);
+        }
+      }
+
+      if (deleteAction === 'both' && (await this.fs.exists(getCoverFilename(book), 'Books'))) {
+        await this.fs.removeFile(getCoverFilename(book), 'Books');
+      }
+      if (deleteAction === 'local' || deleteAction === 'purge') {
+        book.downloadedAt = null;
+      } else {
+        book.deletedAt = Date.now();
+        book.downloadedAt = null;
+        book.coverDownloadedAt = null;
+      }
+    }
   }
 
+  /**
+   * No cloud storage backend in this build — always resolves to
+   * `undefined`. Callers (Discord Rich Presence cover art, Readwise's
+   * published-cover link) already treat a missing URL as "skip this
+   * optional enhancement" and degrade gracefully.
+   */
   async uploadFileToCloud(
-    lfp: string,
-    cfp: string,
-    base: BaseDir,
-    handleProgress: ProgressHandler,
-    hash: string,
-    temp: boolean = false,
-    media?: string,
-  ) {
-    return CloudSvc.uploadFileToCloud(
-      this.fs,
-      this.resolveFilePath.bind(this),
-      lfp,
-      cfp,
-      base,
-      handleProgress,
-      hash,
-      temp,
-      media,
-    );
-  }
-
-  async uploadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress: ProgressHandler,
-  ) {
-    return CloudSvc.uploadReplicaFileToCloud(this.fs, this.resolveFilePath.bind(this), {
-      kind,
-      replicaId,
-      filename,
-      lfp,
-      base,
-      onProgress,
-    });
-  }
-
-  async downloadReplicaFile(
-    kind: string,
-    replicaId: string,
-    filename: string,
-    lfp: string,
-    base: BaseDir,
-    onProgress?: ProgressHandler,
-  ) {
-    // Resolve the relative `<bundleDir>/<filename>` lfp against the
-    // replica's base dir before downloading. Mirrors how upload uses
-    // `resolveFilePath(opts.lfp, opts.base)`. Without this, the writer
-    // lands the bytes at the literal lfp (no base prefix) so subsequent
-    // openFile(lfp, base) calls fail with "File not found".
-    const dst = await this.resolveFilePath(lfp, base);
-    return CloudSvc.downloadReplicaFileFromCloud(this, {
-      kind,
-      replicaId,
-      filename,
-      dst,
-      onProgress,
-    });
-  }
-
-  async deleteReplicaBundle(kind: string, replicaId: string, filenames: string[]) {
-    return CloudSvc.deleteReplicaBundleFromCloud(kind, replicaId, filenames);
-  }
-
-  async uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    return CloudSvc.uploadBook(this.fs, this.resolveFilePath.bind(this), book, onProgress);
-  }
-
-  async uploadBookCover(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    return CloudSvc.uploadBookCover(this.fs, this.resolveFilePath.bind(this), book, onProgress);
-  }
-
-  async downloadCloudFile(lfp: string, cfp: string, onProgress: ProgressHandler) {
-    return CloudSvc.downloadCloudFile(this, this.localBooksDir, lfp, cfp, onProgress);
-  }
-
-  async downloadBookCovers(books: Book[]): Promise<void> {
-    return CloudSvc.downloadBookCovers(this, this.fs, this.localBooksDir, books);
-  }
-
-  async downloadBook(
-    book: Book,
-    onlyCover = false,
-    redownload = false,
-    onProgress?: ProgressHandler,
-  ): Promise<void> {
-    return CloudSvc.downloadBook(
-      this,
-      this.fs,
-      this.localBooksDir,
-      book,
-      onlyCover,
-      redownload,
-      onProgress,
-    );
+    _lfp: string,
+    _cfp: string,
+    _base: BaseDir,
+    _handleProgress: ProgressHandler,
+    _hash: string,
+    _temp: boolean = false,
+    _media?: string,
+  ): Promise<string | undefined> {
+    return undefined;
   }
 
   async exportBook(book: Book): Promise<boolean> {
@@ -471,7 +444,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async fetchBookDetails(book: Book) {
-    return BookSvc.fetchBookDetails(this.fs, book, this.downloadBook.bind(this));
+    return BookSvc.fetchBookDetails(this.fs, book);
   }
 
   async saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings) {

@@ -29,9 +29,9 @@ describe('isCloudSyncInPlan', () => {
 });
 
 describe('isCloudSyncAllowed (premium paywall)', () => {
-  test('third-party cloud sync requires a paid plan', () => {
-    expect(CLOUD_SYNC_REQUIRES_PREMIUM).toBe(true);
-    expect(isCloudSyncAllowed('free')).toBe(false);
+  test('paywall is switched off (no payment backend to verify a plan against)', () => {
+    expect(CLOUD_SYNC_REQUIRES_PREMIUM).toBe(false);
+    expect(isCloudSyncAllowed('free')).toBe(true);
     expect(isCloudSyncAllowed('plus')).toBe(true);
     expect(isCloudSyncAllowed('pro')).toBe(true);
     expect(isCloudSyncAllowed('purchase')).toBe(true);
@@ -79,25 +79,11 @@ describe('withCloudProviderEnabled', () => {
     expect(next.webdav.password).toBe('p');
   });
 
-  test('turning Readest Cloud off writes an explicit false and stamps disabledAt', () => {
-    const next = withCloudProviderEnabled(both, 'readest', false);
-    expect(next.readestCloud?.enabled).toBe(false);
-    expect(next.readestCloud?.disabledAt).toBeTruthy();
-    expect(next.webdav.enabled).toBe(true);
-  });
-
-  test('turning Readest Cloud on writes an explicit true and clears disabledAt', () => {
-    const off = withCloudProviderEnabled(both, 'readest', false);
-    const on = withCloudProviderEnabled(off, 'readest', true);
-    expect(on.readestCloud?.enabled).toBe(true);
-    expect(on.readestCloud?.disabledAt).toBeUndefined();
-  });
-
   test('every provider can be off at once', () => {
     let next = withCloudProviderEnabled(both, 'webdav', false);
-    next = withCloudProviderEnabled(next, 'readest', false);
+    next = withCloudProviderEnabled(next, 'gdrive', false);
     expect(next.webdav.enabled).toBe(false);
-    expect(next.readestCloud?.enabled).toBe(false);
+    expect(next.googleDrive.enabled).toBe(false);
   });
 });
 

@@ -1,13 +1,6 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
-
-// transferManager is a singleton with heavy dependencies; mock it so the test
-// only observes whether ingestFile decided to queue an upload.
-vi.mock('@/services/transferManager', () => ({
-  transferManager: { queueUpload: vi.fn() },
-}));
+import { describe, test, expect, vi } from 'vitest';
 
 import { ingestFile } from '@/services/ingestService';
-import { transferManager } from '@/services/transferManager';
 import type { Book } from '@/types/book';
 import type { AppService, OsPlatform } from '@/types/system';
 import type { SystemSettings } from '@/types/settings';
@@ -27,8 +20,6 @@ function makeBook(overrides: Partial<Book> = {}): Book {
 function makeDeps(
   over: {
     importResult?: Book | null;
-    bookSyncEnabled?: boolean;
-    isLoggedIn?: boolean;
     externalLibraryFolders?: string[];
     osPlatform?: OsPlatform;
   } = {},
@@ -42,45 +33,29 @@ function makeDeps(
     importBook,
     osPlatform: over.osPlatform ?? ('linux' as OsPlatform),
   } as unknown as AppService;
-  // The Manage Sync "book" category defaults on; only an explicit `false`
-  // opts out of auto-upload. Leaving syncCategories unset mirrors that default.
   const settings = {
     externalLibraryFolders: over.externalLibraryFolders,
-    syncCategories: over.bookSyncEnabled === false ? { book: false } : undefined,
   } as SystemSettings;
-  return { appService, settings, isLoggedIn: over.isLoggedIn ?? false, importBook };
+  return { appService, settings, importBook };
 }
 
 describe('ingestFile', () => {
-  beforeEach(() => {
-    vi.mocked(transferManager.queueUpload).mockClear();
-  });
-
   test('returns the imported book', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings } = makeDeps();
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book?.hash).toBe('hash1');
   });
 
   test('returns null when importBook returns null', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({ importResult: null });
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings } = makeDeps({ importResult: null });
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book).toBeNull();
   });
 
   test('passes the lookup index through to importBook', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
+    const { appService, settings, importBook } = makeDeps();
     const lookupIndex = { byHash: new Map(), byMetaHash: new Map() } as never;
-    await ingestFile(
-      { file: 'book.epub', books: [], lookupIndex },
-      { appService, settings, isLoggedIn },
-    );
+    await ingestFile({ file: 'book.epub', books: [], lookupIndex }, { appService, settings });
     expect(importBook).toHaveBeenCalledWith('book.epub', [], {
       lookupIndex,
       transient: undefined,
@@ -89,10 +64,10 @@ describe('ingestFile', () => {
   });
 
   test('applies groupId and groupName', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
+    const { appService, settings } = makeDeps();
     const book = await ingestFile(
       { file: 'book.epub', books: [], groupId: 'g1', groupName: 'Sci-Fi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.groupId).toBe('g1');
     expect(book?.groupName).toBe('Sci-Fi');
@@ -104,12 +79,12 @@ describe('ingestFile', () => {
     // should demote it back to the library root rather than silently
     // keeping the stale group — that behaviour matters for the
     // Import-from-Folder dialog's "flatten" mode.
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ groupId: 'old', groupName: 'Old/Folder' }),
     });
     const book = await ingestFile(
       { file: 'book.epub', books: [], groupId: '', groupName: undefined },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.groupId).toBe('');
     expect(book?.groupName).toBeUndefined();
@@ -119,96 +94,39 @@ describe('ingestFile', () => {
     // Sanity check for the tri-state contract: undefined groupId means
     // "don't touch the existing group" (used by the inbox drainer and
     // /send page where the user hasn't picked a destination).
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ groupId: 'keep', groupName: 'Keep/Me' }),
     });
-    const book = await ingestFile(
-      { file: 'book.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const book = await ingestFile({ file: 'book.epub', books: [] }, { appService, settings });
     expect(book?.groupId).toBe('keep');
     expect(book?.groupName).toBe('Keep/Me');
   });
 
   test('applies a subject tag and bumps updatedAt', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps();
+    const { appService, settings } = makeDeps();
     const book = await ingestFile(
       { file: 'book.epub', books: [], subjectTag: 'scifi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.tags).toContain('scifi');
     expect(book?.updatedAt).toBeGreaterThan(2000);
   });
 
   test('does not duplicate an existing tag or bump updatedAt', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
+    const { appService, settings } = makeDeps({
       importResult: makeBook({ tags: ['scifi'], updatedAt: 2000 }),
     });
     const book = await ingestFile(
       { file: 'book.epub', books: [], subjectTag: 'scifi' },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book?.tags).toEqual(['scifi']);
     expect(book?.updatedAt).toBe(2000);
   });
 
-  test('forceUpload queues an upload even when book sync is turned off', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      bookSyncEnabled: false,
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('queues an upload by default without forceUpload', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-    });
-    await ingestFile({ file: 'book.epub', books: [] }, { appService, settings, isLoggedIn });
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('does not queue an upload when book sync is turned off in manage sync', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      bookSyncEnabled: false,
-      isLoggedIn: true,
-    });
-    await ingestFile({ file: 'book.epub', books: [] }, { appService, settings, isLoggedIn });
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
-  test('does not queue an upload when the user is not logged in', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: false,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
-  test('never queues an upload for a transient import', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], transient: true, forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
   test('passes the transient flag through to importBook', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
-    await ingestFile(
-      { file: 'book.epub', books: [], transient: true },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings, importBook } = makeDeps();
+    await ingestFile({ file: 'book.epub', books: [], transient: true }, { appService, settings });
     expect(importBook).toHaveBeenCalledWith('book.epub', [], {
       lookupIndex: undefined,
       transient: true,
@@ -216,47 +134,32 @@ describe('ingestFile', () => {
     });
   });
 
-  test('does not queue an upload when the book is already uploaded', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      importResult: makeBook({ uploadedAt: 5000 }),
-      isLoggedIn: true,
-    });
-    await ingestFile(
-      { file: 'book.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
-  });
-
   // ------ in-place auto-detection ------
 
   test('does not mark in-place when no external library folders are configured', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
-    await ingestFile(
-      { file: '/Users/me/Books/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    const { appService, settings, importBook } = makeDeps();
+    await ingestFile({ file: '/Users/me/Books/sample.epub', books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
   test('marks in-place when the source file lives under an external library folder', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Library/Imports/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('does not mark in-place when the source file is outside every external library folder', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Downloads/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
@@ -264,12 +167,12 @@ describe('ingestFile', () => {
   test('does not let a sibling-prefix path masquerade as inside an external library folder', async () => {
     // `/Users/me/LibraryOther/...` shares a string prefix with `/Users/me/Library`
     // but is a different directory. The boundary check must use a separator.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/LibraryOther/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
@@ -279,12 +182,12 @@ describe('ingestFile', () => {
     // cloud-drive layouts like Baidu Netdisk's default `Books/` root) must
     // still go in-place. The old `<root>/Books/*` exclusion was a footgun
     // that produced silent hash copies of real user files.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Library/Books/Novels/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
@@ -293,7 +196,7 @@ describe('ingestFile', () => {
     // Files copied under readest's own AppData Books/<hash>/ are already
     // hash copies, not user originals. Marking them in-place would set
     // book.filePath to a path readest already controls.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/AppData'],
     });
     await ingestFile(
@@ -301,7 +204,6 @@ describe('ingestFile', () => {
       {
         appService,
         settings,
-        isLoggedIn,
         appBooksPrefix: '/Users/me/AppData/Books',
       },
     );
@@ -309,29 +211,29 @@ describe('ingestFile', () => {
   });
 
   test('does not mark in-place for relative paths', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
-    await ingestFile({ file: 'sample.epub', books: [] }, { appService, settings, isLoggedIn });
+    await ingestFile({ file: 'sample.epub', books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
   test('does not mark in-place for File objects (web)', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     const blob = new File([new Uint8Array([0])], 'sample.epub');
-    await ingestFile({ file: blob, books: [] }, { appService, settings, isLoggedIn });
+    await ingestFile({ file: blob, books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
   test('does not mark in-place for URL strings even if they happen to start with a slash', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: 'https://example.com/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
@@ -340,12 +242,12 @@ describe('ingestFile', () => {
     // A transient import already takes its own filePath path; we must not
     // also flag it as inPlace, otherwise the Books/<hash>/ guard would be
     // applied twice with subtly different semantics.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Library/sample.epub', books: [], transient: true },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({
       transient: true,
@@ -354,34 +256,34 @@ describe('ingestFile', () => {
   });
 
   test('forceCopy opts out of in-place auto-detection', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Library/sample.epub', books: [], forceCopy: true },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
   test('handles an external library folder path with a trailing slash', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library/'],
     });
     await ingestFile(
       { file: '/Users/me/Library/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('marks in-place for Windows paths under a Windows external library folder', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['C:\\Users\\me\\Library'],
     });
     await ingestFile(
       { file: 'C:\\Users\\me\\Library\\Imports\\sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
@@ -392,23 +294,23 @@ describe('ingestFile', () => {
   // none should not.
 
   test('marks in-place when the source file lives under any registered folder', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Duokan', '/Users/me/Calibre Library'],
     });
     await ingestFile(
       { file: '/Users/me/Calibre Library/Author/Title/book.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('does not mark in-place when the file matches none of the registered folders', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Duokan', '/Users/me/Calibre Library'],
     });
     await ingestFile(
       { file: '/Users/me/Downloads/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
@@ -419,37 +321,36 @@ describe('ingestFile', () => {
     // layout, e.g. Baidu Netdisk / Duokan exports) is treated as ordinary
     // content — files there go in-place. Only readest's own managed Books
     // prefix (passed in via `appBooksPrefix`) is excluded.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Old Library', '/Users/me/Duokan'],
     });
     await ingestFile(
       { file: '/Users/me/Duokan/Books/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
 
     const {
       appService: a2,
       settings: s2,
-      isLoggedIn: l2,
       importBook: i2,
     } = makeDeps({
       externalLibraryFolders: ['/Users/me/Old Library', '/Users/me/Duokan'],
     });
     await ingestFile(
       { file: '/Users/me/Duokan/sample.epub', books: [] },
-      { appService: a2, settings: s2, isLoggedIn: l2 },
+      { appService: a2, settings: s2 },
     );
     expect(i2.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('ignores empty / falsy entries in externalLibraryFolders', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['', '/Users/me/Library'],
     });
     await ingestFile(
       { file: '/Users/me/Library/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
@@ -460,37 +361,37 @@ describe('ingestFile', () => {
   // differ only in case. Linux / Android are case-sensitive and stay strict.
 
   test('matches case-insensitively on macOS', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
       osPlatform: 'macos',
     });
     await ingestFile(
       { file: '/users/me/library/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('matches case-insensitively on iOS', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/var/mobile/Containers/MyLibrary'],
       osPlatform: 'ios',
     });
     await ingestFile(
       { file: '/var/mobile/containers/mylibrary/book.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
 
   test('matches case-insensitively on Windows', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['C:\\Users\\me\\Library'],
       osPlatform: 'windows',
     });
     await ingestFile(
       { file: 'c:\\users\\me\\library\\Imports\\sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: true });
   });
@@ -498,25 +399,22 @@ describe('ingestFile', () => {
   test('stays case-sensitive on Linux', async () => {
     // Guards against regressing case-sensitive platforms into accidentally
     // treating `Library` and `library` as the same directory.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/home/me/Library'],
       osPlatform: 'linux',
     });
-    await ingestFile(
-      { file: '/home/me/library/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
+    await ingestFile({ file: '/home/me/library/sample.epub', books: [] }, { appService, settings });
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
 
   test('stays case-sensitive on Android', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/storage/emulated/0/Books'],
       osPlatform: 'android',
     });
     await ingestFile(
       { file: '/storage/emulated/0/books/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
   });
@@ -525,7 +423,7 @@ describe('ingestFile', () => {
     // The managed-prefix opt-out must follow the same case rules as the
     // root match, otherwise a mixed-case `/Books/` path could slip through
     // as in-place on macOS / iOS / Windows.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/AppData'],
       osPlatform: 'macos',
     });
@@ -534,7 +432,6 @@ describe('ingestFile', () => {
       {
         appService,
         settings,
-        isLoggedIn,
         appBooksPrefix: '/Users/me/AppData/Books',
       },
     );
@@ -550,7 +447,7 @@ describe('ingestFile', () => {
   // path-derived empty groupId would clobber the existing group.
 
   test('byFilePath hit short-circuits importBook entirely on in-place re-import', async () => {
-    const { appService, settings, isLoggedIn, importBook } = makeDeps({
+    const { appService, settings, importBook } = makeDeps({
       externalLibraryFolders: ['/Users/me/Library'],
       osPlatform: 'macos',
     });
@@ -581,7 +478,7 @@ describe('ingestFile', () => {
         groupId: '',
         groupName: undefined,
       },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(book).toBe(existing);
     // importBook never ran, so no file I/O, no parser, no partialMD5.
@@ -598,7 +495,7 @@ describe('ingestFile', () => {
     // external library folder configured) that happens to point at a path
     // already in the library must still go through importBook so dedup
     // falls back to byHash.
-    const { appService, settings, isLoggedIn, importBook } = makeDeps();
+    const { appService, settings, importBook } = makeDeps();
     const sourcePath = '/Users/me/Downloads/sample.epub';
     const existing: Book = {
       hash: 'previously-hashed',
@@ -616,60 +513,9 @@ describe('ingestFile', () => {
     } as unknown as Parameters<typeof ingestFile>[0]['lookupIndex'];
     await ingestFile(
       { file: sourcePath, books: [existing], lookupIndex },
-      { appService, settings, isLoggedIn },
+      { appService, settings },
     );
     expect(importBook).toHaveBeenCalledTimes(1);
     expect(importBook.mock.calls[0]?.[2]).toMatchObject({ inPlace: false });
-  });
-
-  // ------ in-place + cloud upload ------
-  // In-place imports are still uploaded so the user gets backup / cross-device
-  // sync. Only transient imports opt out of upload entirely. The on-the-wire
-  // shape is identical to a hash-copy book; uploadBook reads from book.filePath
-  // when set, which is asserted in cloud-service.test.ts.
-
-  test('queues an in-place book by default (book.filePath set)', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-      externalLibraryFolders: ['/Users/me/Library'],
-      importResult: makeBook({ filePath: '/Users/me/Library/sample.epub' }),
-    });
-    await ingestFile(
-      { file: '/Users/me/Library/sample.epub', books: [] },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('forceUpload still queues an in-place book even when book sync is off', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      bookSyncEnabled: false,
-      isLoggedIn: true,
-      externalLibraryFolders: ['/Users/me/Library'],
-      importResult: makeBook({ filePath: '/Users/me/Library/sample.epub' }),
-    });
-    await ingestFile(
-      { file: '/Users/me/Library/sample.epub', books: [], forceUpload: true },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).toHaveBeenCalledTimes(1);
-  });
-
-  test('transient still trumps in-place — no upload even with forceUpload', async () => {
-    const { appService, settings, isLoggedIn } = makeDeps({
-      isLoggedIn: true,
-      externalLibraryFolders: ['/Users/me/Library'],
-      importResult: makeBook({ filePath: '/Users/me/Library/sample.epub' }),
-    });
-    await ingestFile(
-      {
-        file: '/Users/me/Library/sample.epub',
-        books: [],
-        transient: true,
-        forceUpload: true,
-      },
-      { appService, settings, isLoggedIn },
-    );
-    expect(transferManager.queueUpload).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { MdUploadFile, MdCheckCircle, MdError, MdLink, MdExtension } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
-import { useAuth } from '@/context/AuthContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -27,13 +26,13 @@ interface SendItem {
 
 /**
  * The Send to Readest web page. Being a Readest client itself, it runs the
- * shared import pipeline directly (no inbox round-trip): drop a file or paste
- * an article URL and it lands in the cloud library, syncing to every device.
+ * shared import pipeline directly (no inbox round-trip): drop a file or
+ * paste an article URL and it lands in the local library, mirroring to any
+ * third-party cloud sync backend the user has enabled.
  */
 export default function SendPage() {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const { user } = useAuth();
   const { settings } = useSettingsStore();
   // Direct client fetch only works without CORS, i.e. inside the Tauri
   // webview. On the pure web build the URL flow has no reliable way to scrape
@@ -57,13 +56,13 @@ export default function SendPage() {
       const { library } = useLibraryStore.getState();
       const book = await ingestFile(
         { file, books: library, forceUpload: true },
-        { appService, settings, isLoggedIn: !!user },
+        { appService, settings },
       );
       if (!book) throw new Error('Import produced no book');
       await useLibraryStore.getState().updateBooks(envConfig, [book]);
       setItem(id, { status: 'done', label: book.title || label });
     },
-    [appService, settings, user, envConfig, setItem],
+    [appService, settings, envConfig, setItem],
   );
 
   const handleFiles = useCallback(
@@ -113,17 +112,6 @@ export default function SendPage() {
       });
     }
   }, [url, importResolvedFile, setItem, _]);
-
-  if (!user) {
-    return (
-      <div className='mx-auto flex max-w-[560px] flex-col items-center px-4 py-16 text-center'>
-        <h1 className='text-xl font-semibold'>{_('Send to Readest')}</h1>
-        <p className='text-base-content/70 mt-2 text-sm'>
-          {_('Sign in to send books and articles to your library.')}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className='mx-auto flex max-w-[560px] flex-col gap-6 px-4 py-10'>

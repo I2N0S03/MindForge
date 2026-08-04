@@ -114,7 +114,6 @@ export class TTSController extends EventTarget {
   // The owning reader's book key, bound (and re-bound) by attachView; the
   // per-book TTS cache derives its book hash from it.
   bookKey?: string;
-  isAuthenticated: boolean = false;
   preprocessCallback?: (ssml: string) => Promise<string>;
   onSectionChange?: (sectionIndex: number) => Promise<void>;
   // When true, the speak loop pauses at the end of the current chapter/section
@@ -189,7 +188,6 @@ export class TTSController extends EventTarget {
   constructor(
     appService: AppService | null,
     view: FoliateView,
-    isAuthenticated: boolean = false,
     preprocessCallback?: (ssml: string) => Promise<string>,
     onSectionChange?: (sectionIndex: number) => Promise<void>,
   ) {
@@ -204,7 +202,6 @@ export class TTSController extends EventTarget {
     this.ttsClient = this.ttsWebClient;
     this.appService = appService;
     this.view = view;
-    this.isAuthenticated = isAuthenticated;
     this.preprocessCallback = preprocessCallback;
     this.onSectionChange = onSectionChange;
   }

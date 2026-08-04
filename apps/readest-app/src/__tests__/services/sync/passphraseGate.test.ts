@@ -7,7 +7,13 @@ import {
 } from '@/services/sync/passphraseGate';
 import { isSyncError } from '@/libs/errors';
 import type { CipherEnvelope } from '@/types/replica';
-import type { ReplicaKeyRow } from '@/libs/replicaSyncClient';
+
+interface ReplicaKeyRow {
+  saltId: string;
+  alg: string;
+  salt: string;
+  createdAt: string;
+}
 
 const ITER = 1000;
 const PBKDF2_ALG = 'pbkdf2-600k-sha256';

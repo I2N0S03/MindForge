@@ -1,37 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   canToggleCloudProvider,
-  getReadestCloudRowStatus,
   getThirdPartyRowStatus,
 } from '@/components/settings/integrations/cloudSyncStatus';
 
 const _ = (key: string) => key;
-
-describe('getReadestCloudRowStatus', () => {
-  test('signed out wins over everything', () => {
-    expect(getReadestCloudRowStatus(_, { signedIn: false, planLoading: true, enabled: true })).toBe(
-      'Not signed in',
-    );
-  });
-
-  test('loading while the plan resolves', () => {
-    expect(getReadestCloudRowStatus(_, { signedIn: true, planLoading: true, enabled: true })).toBe(
-      '…',
-    );
-  });
-
-  test('reports off when the user unchecked it', () => {
-    expect(
-      getReadestCloudRowStatus(_, { signedIn: true, planLoading: false, enabled: false }),
-    ).toBe('Off');
-  });
-
-  test('reports active when checked', () => {
-    expect(getReadestCloudRowStatus(_, { signedIn: true, planLoading: false, enabled: true })).toBe(
-      'Active',
-    );
-  });
-});
 
 describe('getThirdPartyRowStatus', () => {
   const base = {
@@ -110,33 +83,19 @@ describe('getThirdPartyRowStatus: book file coverage', () => {
 });
 
 describe('canToggleCloudProvider', () => {
-  test('premium and configured can be toggled', () => {
-    expect(canToggleCloudProvider({ isPremium: true, isConfigured: true, isEnabled: false })).toBe(
-      true,
-    );
+  test('configured can be toggled', () => {
+    expect(canToggleCloudProvider({ isConfigured: true, isEnabled: false })).toBe(true);
   });
 
-  test('premium, unconfigured, and not enabled cannot be toggled', () => {
-    expect(canToggleCloudProvider({ isPremium: true, isConfigured: false, isEnabled: false })).toBe(
-      false,
-    );
+  test('unconfigured and not enabled cannot be toggled', () => {
+    expect(canToggleCloudProvider({ isConfigured: false, isEnabled: false })).toBe(false);
   });
 
-  test('a lapsed-plan user can always switch an enabled provider off', () => {
-    expect(canToggleCloudProvider({ isPremium: false, isConfigured: false, isEnabled: true })).toBe(
-      true,
-    );
+  test('an enabled provider can always be switched off, even unconfigured', () => {
+    expect(canToggleCloudProvider({ isConfigured: false, isEnabled: true })).toBe(true);
   });
 
-  test('not premium and not enabled cannot be toggled', () => {
-    expect(
-      canToggleCloudProvider({ isPremium: false, isConfigured: false, isEnabled: false }),
-    ).toBe(false);
-  });
-
-  test('premium with cleared config but still enabled can be toggled (rescue)', () => {
-    expect(canToggleCloudProvider({ isPremium: true, isConfigured: false, isEnabled: true })).toBe(
-      true,
-    );
+  test('cleared config but still enabled can be toggled (rescue)', () => {
+    expect(canToggleCloudProvider({ isConfigured: false, isEnabled: true })).toBe(true);
   });
 });

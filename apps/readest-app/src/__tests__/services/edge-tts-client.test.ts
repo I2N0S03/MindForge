@@ -127,9 +127,8 @@ describe('EdgeTTSClient', () => {
       expect(voices.map((v) => v.id)).toContain('en-US-AriaNeural');
     });
 
-    test('wss failure falls back to https when controller is authenticated', async () => {
+    test('wss failure always falls back to https (no auth required)', async () => {
       const mockController = {
-        isAuthenticated: true,
         dispatchEvent: vi.fn(),
       } as unknown as TTSController;
       const c = new EdgeTTSClient(mockController);
@@ -149,10 +148,9 @@ describe('EdgeTTSClient', () => {
       expect(callCount).toBe(2);
     });
 
-    test('wss failure does not fall back to https on Tauri even when authenticated', async () => {
+    test('wss failure does not fall back to https on Tauri', async () => {
       tauriPlatform = true;
       const mockController = {
-        isAuthenticated: true,
         dispatchEvent: vi.fn(),
       } as unknown as TTSController;
       const c = new EdgeTTSClient(mockController);
@@ -170,10 +168,9 @@ describe('EdgeTTSClient', () => {
       expect(callCount).toBe(1);
     });
 
-    test('wss failure dispatches tts-need-auth when not authenticated', async () => {
+    test('wss and https failure dispatches tts-unavailable', async () => {
       const dispatchEvent = vi.fn();
       const mockController = {
-        isAuthenticated: false,
         dispatchEvent,
       } as unknown as TTSController;
       const c = new EdgeTTSClient(mockController);
@@ -183,13 +180,12 @@ describe('EdgeTTSClient', () => {
       const result = await c.init();
       expect(result).toBe(false);
       expect(dispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'tts-need-auth' }),
+        expect.objectContaining({ type: 'tts-unavailable' }),
       );
     });
 
     test('https failure sets initialized to false', async () => {
       const mockController = {
-        isAuthenticated: true,
         dispatchEvent: vi.fn(),
       } as unknown as TTSController;
       const c = new EdgeTTSClient(mockController);

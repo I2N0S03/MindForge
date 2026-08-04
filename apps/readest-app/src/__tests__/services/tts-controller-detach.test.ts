@@ -144,7 +144,7 @@ describe('TTSController detach/attach', () => {
     ttsNextReturns = [];
     onSectionChange = vi.fn<(sectionIndex: number) => Promise<void>>().mockResolvedValue(undefined);
     ({ view } = makeView());
-    controller = new TTSController(null, view, false, undefined, onSectionChange);
+    controller = new TTSController(null, view, undefined, onSectionChange);
     await controller.init();
     await controller.initViewTTS(0);
   });

@@ -30,7 +30,6 @@ export interface OpenFeedArticleParams {
   books: Book[];
   appService: AppService;
   settings: SystemSettings;
-  isLoggedIn: boolean;
   translate: (key: string) => string;
   /** Injectable seams for testing; default to the real collaborators. */
   clip?: (url: string, options: unknown) => Promise<string>;
@@ -45,7 +44,6 @@ export async function openFeedArticle(params: OpenFeedArticleParams): Promise<Bo
     books,
     appService,
     settings,
-    isLoggedIn,
     translate,
     clip = (url, options) => invoke<string>('clip_url', { url, options }),
     convert = convertToEpubWithWorker,
@@ -67,7 +65,7 @@ export async function openFeedArticle(params: OpenFeedArticleParams): Promise<Bo
       groupName: feed.title,
       forceUpload: true,
     },
-    { appService, settings, isLoggedIn },
+    { appService, settings },
   );
   if (!book) throw new Error(_('Import produced no book'));
   return book;

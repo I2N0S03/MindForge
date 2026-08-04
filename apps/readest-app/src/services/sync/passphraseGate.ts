@@ -26,13 +26,14 @@
  * unlocks from the keychain at boot without re-prompting.
  */
 import { isWrongPassphraseError, SyncError } from '@/libs/errors';
-import { cryptoSession as defaultCryptoSession } from '@/libs/crypto/session';
-import { replicaSyncClient } from '@/libs/replicaSyncClient';
+import {
+  cryptoSession as defaultCryptoSession,
+  unavailableReplicaKeyClient,
+} from '@/libs/crypto/session';
 import { isCipherEnvelope } from '@/types/replica';
 import { stubTranslation as _ } from '@/utils/misc';
 import type { CipherEnvelope } from '@/types/replica';
-import type { CryptoSession } from '@/libs/crypto/session';
-import type { ReplicaSyncClient } from '@/libs/replicaSyncClient';
+import type { CryptoSession, ReplicaKeyClient } from '@/libs/crypto/session';
 
 export type PassphrasePromptKind = 'unlock' | 'setup';
 
@@ -156,7 +157,7 @@ const waitForPrompter = async (): Promise<PassphrasePrompter> => {
 
 export interface EnsureUnlockedDeps {
   session?: CryptoSession;
-  client?: Pick<ReplicaSyncClient, 'listReplicaKeys'>;
+  client?: Pick<ReplicaKeyClient, 'listReplicaKeys'>;
   /**
    * Cipher envelope used to check the entered passphrase. Defaults to the
    * sample the pull path last recorded.
@@ -189,7 +190,7 @@ export interface EnsureUnlockedDeps {
  */
 export const ensurePassphraseUnlocked = async (deps: EnsureUnlockedDeps = {}): Promise<void> => {
   const session = deps.session ?? defaultCryptoSession;
-  const client = deps.client ?? replicaSyncClient;
+  const client = deps.client ?? unavailableReplicaKeyClient;
   if (deps.auto && declined) {
     throw new SyncError('NO_PASSPHRASE', 'User declined the passphrase prompt this run');
   }
